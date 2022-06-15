@@ -1,5 +1,5 @@
-import {_decorator, Component, Contact2DType, Collider2D, IPhysics2DContact, CCInteger} from 'cc';
-import {main} from 'db://assets/scripts/main';
+import {_decorator, Component, Contact2DType, Collider2D, RigidBody2D, IPhysics2DContact, CCInteger} from 'cc';
+import {main, isOver} from 'db://assets/scripts/main';
 
 const {ccclass, property} = _decorator;
 
@@ -32,7 +32,7 @@ export class Fruit extends Component {
             return;
         }
         if (otherCollider.tag === 14){
-            this.schedule(this.gameOver, 3)
+            this.scheduleOnce(this.gameOver, 3)
             return;
         }
         if(otherCollider.tag === 99){
@@ -49,12 +49,13 @@ export class Fruit extends Component {
         if(Date.now() - this.nowTime < 888 && otherCollider.tag === 99){
             this.unschedule(this.showTopLine);
         }
-        if(this.isShow && otherCollider.tag === 99){
-            this.scheduleOnce(this.hideTopLine, 0);
-        }
     }
 
     update(deltaTime: number) {
+        if(isOver){
+            this.node.getComponent(RigidBody2D).gravityScale = 0;
+            this.node.getComponent(Collider2D).enabled = false;
+        }
     }
 
     // 必须单独拿出来，定时器里不能直接调用其它对象的方法
