@@ -61,6 +61,7 @@ export class main extends Component {
     }
 
     play() {
+        isOver = false;
         this.over.active = false;
         this.topLine.active = false;
         this.fruitPos.clear();
