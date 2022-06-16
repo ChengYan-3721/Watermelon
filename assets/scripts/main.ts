@@ -1,4 +1,4 @@
-import {_decorator, Component, Node, Prefab, instantiate, RigidBody2D, math, view, Vec2, Label, AudioClip, AudioSource, UITransform, Animation} from 'cc';
+import {_decorator, Component, Node, Prefab, instantiate, RigidBody2D, Collider2D, math, view, Vec2, Vec3, Label, AudioClip, AudioSource, UITransform, Animation} from 'cc';
 
 const {ccclass, property} = _decorator;
 
@@ -6,6 +6,8 @@ const {ccclass, property} = _decorator;
 export const size: math.Size = view.getVisibleSizeInPixel();
 
 export let isOver: boolean = false;
+export let nodes: Set<Node>;
+export let collides: number[] = [];
 
 @ccclass('main')
 export class main extends Component {
@@ -13,8 +15,6 @@ export class main extends Component {
     scoreLabel: Node = null;
     @property([Prefab])
     fruits: Prefab[];
-    @property(Node)
-    beforeOver: Node = null;
     @property(Node)
     over: Node = null;
     @property(Node)
@@ -37,9 +37,6 @@ export class main extends Component {
 
     isMove: boolean = true;
 
-    // set集合存储碰撞合成信息，两个相同水果碰撞时会产生两个同样的碰撞位置信息，通过 set集合 去重后再生成下一等级的水果
-    fruitPos: Set<number>;
-
     touchPos: Vec2;
 
     score: number = 0;
@@ -50,21 +47,23 @@ export class main extends Component {
     start() {
         // 静态对象赋值为当前对象
         main.instance = this;
-        this.fruitPos = new Set<number>();
         this.touchPos = new Vec2();
+        nodes = new Set();
+        // collides = new Set();
         // 获取 AudioSource 组件
         this.sound = this.node.getComponent(AudioSource);
         this.play();
     }
 
     update(deltaTime: number) {
+        this.topLine.active = !!nodes.size;
     }
 
     play() {
         isOver = false;
         this.over.active = false;
         this.topLine.active = false;
-        this.fruitPos.clear();
+        nodes.clear();
         this.score = 0;
         this.scoreLabel.getComponent(Label).string = this.score.toString();
         this.yieldNewFruit();
@@ -74,18 +73,22 @@ export class main extends Component {
         let x: number = 720 / size.x;
         // let y: number = size.y * x / 2;
         this.node.on(Node.EventType.TOUCH_END, (e) => {
-            if(!this.newFruit || !this.isMove) return;
+            if(!this.isMove) return;
             this.isMove = false;
+            this.scheduleOnce(()=>{
+                this.isMove = true;
+            }, 1);
+            if(!this.newFruit.isValid  && !this.newFruit) this.scheduleOnce(this.yieldNewFruit, 1);
             let s = e.getLocationX() * x - 360
             this.newFruit.getComponent(RigidBody2D).gravityScale = 0;
             this.newFruit.getComponent(RigidBody2D).linearVelocity = this.touchPos.set(s / 6, 0);
             this.scheduleOnce(()=>{
-                if(this.newFruit.isValid) {
+                if(this.newFruit.isValid && this.newFruit) {
                     this.newFruit.getComponent(RigidBody2D).linearVelocity = this.touchPos.set(0, 0);
                     this.newFruit.setPosition(s, 560);
+                    this.newFruit.getComponent(Collider2D).enabled = true;
                     this.newFruit.getComponent(RigidBody2D).gravityScale = 4;
                     this.newFruit = null;
-                    this.isMove = true;
                 }else{
                     this.scheduleOnce(this.yieldNewFruit, 1);
                 }
@@ -101,52 +104,47 @@ export class main extends Component {
         this.newFruit = instantiate(this.fruits[i]);
         this.newFruit.setParent(this.node);
         this.newFruit.setPosition(0, 560);
+        this.newFruit.getComponent(Collider2D).enabled = false;
         this.newFruit.getComponent(RigidBody2D).sleep();
     }
 
     // 合并同类项，生成下一等级的水果
-    mergeFruits(pos: Vec2, level: number) {
-        if(!this.fruitPos.has(pos.x)) {
-            let x: number = 720 / size.x;
-            let y: number = 1280 / x / size.y;
-            let mergeFruit: Node = instantiate(this.fruits[level]);
-            mergeFruit.setParent(this.node);
-            mergeFruit.setPosition(pos.x - 360, pos.y - 640 / y);
-            mergeFruit.getComponent(RigidBody2D).applyForceToCenter(pos, true);
-            // 更新分数
-            this.scoreLabel.getComponent(Label).string = this.score.toString();
-            // 播放音效
-            this.sound.playOneShot(this.audioClip, 1);
-            // 播放动画
-            this.anim(pos.x - 360, pos.y - 640 / y, mergeFruit.getComponent(UITransform).contentSize);
-            if(level == 10) this.winNode.active = true;
-            this.fruitPos.clear();
-            this.fruitPos.add(pos.x);
-        }
+    async mergeFruits(pos: Vec3, level: number) {
+        // let x: number = 720 / size.x;
+        // let y: number = 1280 / x / size.y;
+        await new Promise(resolve=>setTimeout(resolve, 100));
+        let mergeFruit: Node = instantiate(this.fruits[level]);
+        mergeFruit.setParent(this.node);
+        // mergeFruit.setPosition(pos.x - 360, pos.y - 640 / y);
+        mergeFruit.setPosition(pos.x, pos.y);
+        // 更新分数
+        this.scoreLabel.getComponent(Label).string = this.score.toString();
+        // 播放音效
+        this.sound.playOneShot(this.audioClip, 1);
+        // 播放动画
+        // this.anim(pos.x - 360, pos.y - 640 / y, mergeFruit.getComponent(UITransform).contentSize);
+        this.anim(pos.x, pos.y, mergeFruit.getComponent(UITransform).contentSize);
+        if(level == 10) this.winNode.active = true;
     }
 
     async gameOver(){
         isOver = true;
-        this.beforeOver.active = true;
         this.node.pauseSystemEvents(true);
         let fruits = this.node.children;
         for (let i = fruits.length - 1; i > 3; i--) {
-            if(fruits[i].name.indexOf('fruit')) continue;
-            console.log(fruits[i].name);
+            if(!fruits[i] || fruits[i].name.indexOf('fruit')) continue;
             // 播放音效
             this.sound.playOneShot(this.audioClip, 1);
             fruits[i].destroy();
             await new Promise(resolve=>setTimeout(resolve, 100));
         }
         this.over.active = true;
-        this.beforeOver.active = false;
         this.overLabel.getComponent(Label).string = this.score.toString();
         if(this.newFruit) this.newFruit.destroy();
         this.newFruit = null;
     }
 
     restart(){
-        this.fruitPos.clear();
         let fruits = this.node.children;
         for (let i = fruits.length - 1; i > 4; i--) {
             if(fruits[i].name.indexOf('fruit')) continue;
